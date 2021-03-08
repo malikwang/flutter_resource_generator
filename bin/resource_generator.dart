@@ -44,6 +44,13 @@ void main(List<String> args) {
     defaultsTo: false,
   );
 
+  parser.addFlag(
+    'replace',
+    abbr: 'r',
+    help: 'After generate resource file, would auto find asset path and replace with the defined variable name.',
+    defaultsTo: false,
+  );
+
   final ArgResults results = parser.parse(args);
 
   Logger().isDebug = results['debug'] as bool;
@@ -64,6 +71,7 @@ void main(List<String> args) {
     className,
     results['watch'] as bool,
     results['preview'] as bool,
+    results['replace'] as bool,
   );
 }
 
@@ -73,10 +81,11 @@ void check(
   String className,
   bool isWatch,
   bool isPreview,
+  bool replace,
 ) {
-  final ResourceDartBuilder builder =
-      ResourceDartBuilder(workPath.absolute.path, outputPath);
+  final ResourceDartBuilder builder = ResourceDartBuilder(workPath.absolute.path, outputPath);
   builder.isWatch = isWatch;
   builder.isPreview = isPreview;
+  builder.replace = replace;
   builder.generateResourceDartFile(className);
 }

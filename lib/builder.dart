@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:yaml/yaml.dart';
 import 'package:path/path.dart';
+import 'package:yaml/yaml.dart';
 
+import 'file_util.dart';
 import 'filter.dart';
 import 'format.dart';
 import 'logger.dart';
+import 'path_util.dart';
 import 'template.dart';
 
 const List<String> platformExcludeFiles = <String>[
@@ -38,10 +40,13 @@ class ResourceDartBuilder {
 
   bool isPreview = true;
 
+  bool replace = false;
+
+  String get pubYamlPath => '$projectRootPath${separator}pubspec.yaml';
+
   void generateResourceDartFile(String className) {
     print('Generating files for Project: $projectRootPath');
     stopWatch();
-    final String pubYamlPath = '$projectRootPath${separator}pubspec.yaml';
     try {
       final List<String> assetPathList = _getAssetPath(pubYamlPath);
       logger.debug('the assetPath is $assetPathList');
@@ -49,6 +54,9 @@ class ResourceDartBuilder {
       writeText('allImageList = $allImageList');
       logger.debug('the image is $allImageList');
       generateCode(className);
+      if (replace) {
+        replaceAndImport(className);
+      }
     } catch (e) {
       if (e is StackOverflowError) {
         writeText(e.stackTrace);
@@ -192,6 +200,15 @@ class ResourceDartBuilder {
     return _resourceFile;
   }
 
+  String get importString {
+    final String resourcePath = resourceFile.path;
+    final List<String> results = resourcePath.split('/lib/');
+    final File pubYamlFile = File(pubYamlPath);
+    final dynamic pubYaml = loadYaml(pubYamlFile.readAsStringSync());
+    final String packageName = pubYaml['name'] as String;
+    return "import 'package:$packageName/${results[1]}';\n";
+  }
+
   /// generate the dart code
   void generateCode(String className) {
     stopWatch();
@@ -217,6 +234,42 @@ class ResourceDartBuilder {
     resourceFile.writeAsString(formattedCode);
     sw.stop();
     writeText('end write code ${sw.elapsedMilliseconds}');
+  }
+
+  void replaceAndImport(String className) {
+    print('find-->replace-->import');
+    print('it would take a long time...');
+    final List<String> filesPath = dartFilesPath(projectRootPath);
+    for (final String filePath in filesPath) {
+      if (filePath.contains(outputPath)) {
+        continue;
+      }
+      final File file = File(filePath);
+      String content = file.readAsStringSync();
+      bool changed = false;
+      for (final String imagePath in allImageList) {
+        final Pattern pattern = RegExp('''[',"].?$imagePath[',"]''');
+        if (content.contains(pattern)) {
+          content = content.replaceAll(pattern, 'R.${formatFileNameCamelCase(imagePath)}');
+          changed = true;
+        }
+      }
+      if (changed) {
+        final int dartIndex = content.lastIndexOf('''import 'dart:''');
+        if (dartIndex != -1) {
+          final int packageIndex = content.substring(dartIndex).indexOf('''import 'package:''');
+          if (packageIndex != -1) {
+            content = content.substring(0, packageIndex + dartIndex) + importString + content.substring(packageIndex + dartIndex);
+          } else {
+            final int index = content.substring(dartIndex).indexOf('\n');
+            content = content.substring(0, index + 1) + importString + content.substring(packageIndex + 1);
+          }
+        } else {
+          content = importString + content;
+        }
+        File(filePath).writeAsStringSync(content);
+      }
+    }
   }
 
   /// watch all of path
